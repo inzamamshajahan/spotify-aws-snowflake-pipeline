@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   Deploys the Serverless Spotify Data Pipeline, including the Lambda function,
-  IAM role, and a Lambda Layer for dependencies.
+  IAM role, Lambda Layer, and a daily scheduled trigger.
 
 Parameters:
   ProjectName:
@@ -27,7 +27,6 @@ Parameters:
     Description: The name of the secret in AWS Secrets Manager for Snowflake credentials.
     Default: 'spotify_pipeline/prod/snowflake_credentials'
 
-  # --- NEW PARAMETERS ---
   FunctionZipVersionId:
     Type: String
     Description: The S3 object version ID for the function.zip file.
@@ -42,7 +41,6 @@ Resources:
     Type: 'AWS::IAM::Role'
     Properties:
       RoleName: !Sub '${ProjectName}-LambdaExecutionRole'
-      # ... (rest of the role is unchanged) ...
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -79,7 +77,6 @@ Resources:
       Content:
         S3Bucket: !Ref DeploymentS3Bucket
         S3Key: 'lambda_layer.zip'
-        # --- MODIFIED: Use the specific version ID ---
         S3ObjectVersion: !Ref LayerZipVersionId
       CompatibleRuntimes:
         - 'python3.9'
@@ -91,7 +88,7 @@ Resources:
     Type: 'AWS::Lambda::Function'
     Properties:
       FunctionName: !Sub '${ProjectName}-Function'
-      Handler: 'src.lambda_handler.handler' # This should now be correct
+      Handler: 'src.lambda_handler.handler'
       Role: !GetAtt LambdaExecutionRole.Arn
       Runtime: 'python3.9'
       Timeout: 90
@@ -99,7 +96,6 @@ Resources:
       Code:
         S3Bucket: !Ref DeploymentS3Bucket
         S3Key: 'function.zip'
-        # --- MODIFIED: Use the specific version ID ---
         S3ObjectVersion: !Ref FunctionZipVersionId
       Environment:
         Variables:
@@ -108,6 +104,29 @@ Resources:
           SNOWFLAKE_SECRET_NAME: !Ref SnowflakeSecretName
       Layers:
         - !Ref DependenciesLayer
+
+  # --- NEW RESOURCE: EventBridge Rule to run the function on a schedule ---
+  ScheduledRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${ProjectName}-DailyTrigger'
+      Description: 'Runs the Spotify data pipeline once a day.'
+      # This cron expression runs at 07:00 AM UTC every day. You can change it.
+      # See: https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-schedule-expressions.html
+      ScheduleExpression: 'cron(0 7 * * ? *)'
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt SpotifyPipelineFunction.Arn
+          Id: 'SpotifyPipelineFunctionTarget'
+
+  # --- NEW RESOURCE: Permission for EventBridge to invoke the Lambda ---
+  EventBridgeInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt SpotifyPipelineFunction.Arn
+      Action: 'lambda:InvokeFunction'
+      Principal: 'events.amazonaws.com'
+      SourceArn: !GetAtt ScheduledRule.Arn
 
 Outputs:
   LambdaFunctionName:

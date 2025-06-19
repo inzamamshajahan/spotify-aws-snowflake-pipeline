@@ -11,7 +11,7 @@ LAYER_S3_KEY="lambda_layer.zip"
 FUNCTION_S3_KEY="function.zip"
 
 if [ -z "$DEPLOYMENT_S3_BUCKET" ] || [ -z "$RAW_DATA_S3_BUCKET" ]; then
-  echo "Usage: ./deploy.sh <deployment_s3_bucket> <raw_data_s3_bucket>"
+  echo "Usage: ./deploy.sh <deployment_s3_bucket> <raw_data_s_bucket>"
   exit 1
 fi
 
@@ -28,15 +28,28 @@ if [ "$STATUS" == "ROLLBACK_COMPLETE" ]; then
   echo "Stack deleted successfully."
 fi
 
-# --- 1. Package Lambda Layer ---
-echo "Packaging Lambda layer..."
+# --- 1. Package Lambda Layer by forcing pip to use Lambda-compatible wheels ---
+echo "Packaging Lambda layer using Lambda-compatible wheels..."
+# Clean up previous build directory
 rm -rf build
 mkdir -p build/lambda_layer/python
-pip install -r requirements.txt -t build/lambda_layer/python/
+
+# This command tells pip to download pre-compiled binaries ("wheels") that are
+# compatible with the 'manylinux2014_x86_64' platform, which works with AWS Lambda.
+pip install \
+    -r requirements.txt \
+    -t build/lambda_layer/python/ \
+    --platform manylinux2014_x86_64 \
+    --implementation cp \
+    --python-version 3.9 \
+    --only-binary=:all: --upgrade
+
+# Now zip the contents of the 'python' directory
 cd build/lambda_layer
 zip -r ../../lambda_layer.zip .
 cd ../..
 echo "Lambda layer packaged successfully."
+
 
 # --- 2. Package Lambda Function Code ---
 echo "Packaging Lambda function code..."
@@ -49,7 +62,7 @@ aws s3 cp lambda_layer.zip s3://$DEPLOYMENT_S3_BUCKET/$LAYER_S3_KEY
 aws s3 cp function.zip s3://$DEPLOYMENT_S3_BUCKET/$FUNCTION_S3_KEY
 echo "Artifacts uploaded successfully."
 
-# --- NEW: Get the Version IDs of the uploaded files ---
+# --- Get the Version IDs of the uploaded files ---
 echo "Retrieving object version IDs..."
 LAYER_VERSION_ID=$(aws s3api head-object --bucket $DEPLOYMENT_S3_BUCKET --key $LAYER_S3_KEY --query 'VersionId' --output text)
 FUNCTION_VERSION_ID=$(aws s3api head-object --bucket $DEPLOYMENT_S3_BUCKET --key $FUNCTION_S3_KEY --query 'VersionId' --output text)

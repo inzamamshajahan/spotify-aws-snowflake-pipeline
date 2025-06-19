@@ -1,0 +1,39 @@
+name: Deploy Spotify Pipeline to AWS
+
+# Allow this workflow to be triggered manually from the Actions tab
+on:
+  workflow_dispatch:
+
+# Grant permissions for the workflow to get an OIDC token
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # The ARN of the IAM role created for GitHub Actions
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActions-SpotifyPipeline-DeployerRole # <-- PASTE YOUR ROLE ARN HERE
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies for deployment script
+        run: pip install -r requirements.txt
+          
+      - name: Make deploy script executable
+        run: chmod +x ./deploy.sh
+        
+      - name: Run deploy script
+        run: ./deploy.sh ${{ secrets.DEPLOYMENT_S3_BUCKET }} ${{ secrets.RAW_DATA_S3_BUCKET }}
