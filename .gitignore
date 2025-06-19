@@ -1,0 +1,82 @@
+# .gitignore
+# Specifies intentionally untracked files that Git should ignore.
+
+# Python bytecode and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+wheels/
+*.tar.gz
+*.egg
+*.whl # Wheel files
+
+# Python virtual environments
+venv/
+.venv/
+env/
+.env/
+ENV/
+activate_this.py
+
+# IDEs and editors
+.vscode/
+.idea/
+*.project
+*.pydevproject
+.project
+.settings/
+*.sublime-workspace
+*.sublime-project
+nbproject/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+nosetests.xml
+pytestdebug.log
+
+# Type Checking & Linter Caches
+.mypy_cache/
+.ruff_cache/
+
+# Secrets or instance-specific configuration
+instance/
+*.local
+*.db  # If using local SQLite databases not for version control
+*.sqlite3
+*.env # For environment variables
+local_settings.py
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Data files (optional - decide if you want to commit sample_input.csv)
+# If you NEVER want to commit any CSVs in the data directory:
+# data/*.csv
+# If you want to commit sample_input.csv but not the output:
+# data/processed_output.csv
+# For this project, let's allow committing data/sample_input.csv if you generate it locally
+# but ignore the generated output.
+data/processed_output.csv
+
+# Log files
+*.log
+data/*.log # More specific if logs are always in data/
+documentation/
+directory_structure.txt
+
+awscliv2.zip

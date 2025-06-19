@@ -1,0 +1,115 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Deploys the Serverless Spotify Data Pipeline, including the Lambda function,
+  IAM role, and a Lambda Layer for dependencies.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: A prefix for all created resources.
+    Default: 'SpotifySnowflakePipeline'
+  
+  DeploymentS3Bucket:
+    Type: String
+    Description: The S3 bucket where deployment artifacts (zips) are stored.
+
+  RawDataS3BucketName:
+    Type: String
+    Description: The S3 bucket name for landing raw Spotify data.
+
+  SpotifySecretName:
+    Type: String
+    Description: The name of the secret in AWS Secrets Manager for Spotify credentials.
+    Default: 'spotify/prod/api_credentials'
+
+  SnowflakeSecretName:
+    Type: String
+    Description: The name of the secret in AWS Secrets Manager for Snowflake credentials.
+    Default: 'spotify_pipeline/prod/snowflake_credentials'
+
+  # --- NEW PARAMETERS ---
+  FunctionZipVersionId:
+    Type: String
+    Description: The S3 object version ID for the function.zip file.
+  
+  LayerZipVersionId:
+    Type: String
+    Description: The S3 object version ID for the lambda_layer.zip file.
+
+Resources:
+  # IAM Role for the Lambda Function
+  LambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub '${ProjectName}-LambdaExecutionRole'
+      # ... (rest of the role is unchanged) ...
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 'lambda.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: !Sub '${ProjectName}-LambdaPermissions'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: 'arn:aws:logs:*:*:*'
+              - Effect: Allow
+                Action: 'secretsmanager:GetSecretValue'
+                Resource: 
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SpotifySecretName}-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SnowflakeSecretName}-*'
+              - Effect: Allow
+                Action: 's3:PutObject'
+                Resource: !Sub 'arn:aws:s3:::${RawDataS3BucketName}/raw/tracks/*'
+
+  # Lambda Layer for Python Dependencies
+  DependenciesLayer:
+    Type: 'AWS::Lambda::LayerVersion'
+    Properties:
+      LayerName: !Sub '${ProjectName}-DependenciesLayer'
+      Description: 'Dependencies for the Spotify pipeline (requests, snowflake-connector).'
+      Content:
+        S3Bucket: !Ref DeploymentS3Bucket
+        S3Key: 'lambda_layer.zip'
+        # --- MODIFIED: Use the specific version ID ---
+        S3ObjectVersion: !Ref LayerZipVersionId
+      CompatibleRuntimes:
+        - 'python3.9'
+        - 'python3.10'
+      LicenseInfo: 'MIT'
+
+  # The main Lambda Function
+  SpotifyPipelineFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: !Sub '${ProjectName}-Function'
+      Handler: 'src.lambda_handler.handler' # This should now be correct
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: 'python3.9'
+      Timeout: 90
+      MemorySize: 256
+      Code:
+        S3Bucket: !Ref DeploymentS3Bucket
+        S3Key: 'function.zip'
+        # --- MODIFIED: Use the specific version ID ---
+        S3ObjectVersion: !Ref FunctionZipVersionId
+      Environment:
+        Variables:
+          S3_BUCKET_NAME: !Ref RawDataS3BucketName
+          SPOTIFY_SECRET_NAME: !Ref SpotifySecretName
+          SNOWFLAKE_SECRET_NAME: !Ref SnowflakeSecretName
+      Layers:
+        - !Ref DependenciesLayer
+
+Outputs:
+  LambdaFunctionName:
+    Description: "The name of the created Lambda function."
+    Value: !Ref SpotifyPipelineFunction
