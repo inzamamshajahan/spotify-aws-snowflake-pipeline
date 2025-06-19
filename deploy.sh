@@ -28,23 +28,11 @@ if [ "$STATUS" == "ROLLBACK_COMPLETE" ]; then
   echo "Stack deleted successfully."
 fi
 
-# --- 1. Package Lambda Layer using Docker ---
-echo "Packaging Lambda layer using a Docker container to ensure compatibility..."
-# Clean up previous build directory
+# --- 1. Package Lambda Layer ---
+echo "Packaging Lambda layer..."
 rm -rf build
-mkdir -p build/lambda_layer
-
-# The -v mounts the current directory into the container's /var/task directory.
-# We then run a bash shell command inside the container to perform the pip install.
-# The output is directed to the /asset-output directory, which is a mounted volume
-# pointing back to our local 'build/lambda_layer' folder.
-docker run --platform linux/amd64 \
-  -v "$(pwd)/requirements.txt":/var/task/requirements.txt \
-  -v "$(pwd)/build/lambda_layer":/asset-output \
-  public.ecr.aws/lambda/python:3.9 \
-  /bin/sh -c "pip install -r /var/task/requirements.txt -t /asset-output/python"
-
-# Now zip the contents of the 'python' directory created by the container
+mkdir -p build/lambda_layer/python
+pip install -r requirements.txt -t build/lambda_layer/python/
 cd build/lambda_layer
 zip -r ../../lambda_layer.zip .
 cd ../..
@@ -61,7 +49,7 @@ aws s3 cp lambda_layer.zip s3://$DEPLOYMENT_S3_BUCKET/$LAYER_S3_KEY
 aws s3 cp function.zip s3://$DEPLOYMENT_S3_BUCKET/$FUNCTION_S3_KEY
 echo "Artifacts uploaded successfully."
 
-# --- Get the Version IDs of the uploaded files ---
+# --- NEW: Get the Version IDs of the uploaded files ---
 echo "Retrieving object version IDs..."
 LAYER_VERSION_ID=$(aws s3api head-object --bucket $DEPLOYMENT_S3_BUCKET --key $LAYER_S3_KEY --query 'VersionId' --output text)
 FUNCTION_VERSION_ID=$(aws s3api head-object --bucket $DEPLOYMENT_S3_BUCKET --key $FUNCTION_S3_KEY --query 'VersionId' --output text)
